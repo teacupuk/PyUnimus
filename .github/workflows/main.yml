@@ -1,0 +1,37 @@
+name: 🚀 Publish Docker Image to GHCR
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Docker image
+        run: |
+          docker build -t ghcr.io/teacupuk/pyunimus:latest .
+
+      - name: Tag with release version
+        run: |
+          docker tag ghcr.io/teacupuk/pyunimus:latest ghcr.io/teacupuk/pyunimus:${{ github.event.release.tag_name }}
+
+      - name: Push images to GHCR
+        run: |
+          docker push ghcr.io/teacupuk/pyunimus:latest
+          docker push ghcr.io/teacupuk/pyunimus:${{ github.event.release.tag_name }}
