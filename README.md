@@ -58,6 +58,7 @@ docker run -v $(pwd)/backups:/app/backups --env-file .env ghcr.io/teacupuk/pyuni
 The tool uses a `.env` file to provide configuration variables. Example:
 
 ```env
+RUN_INTERVAL=3600
 unimus_server_address=http://foo.bar:8085
 unimus_api_key=insert api key here
 backup_type=latest
