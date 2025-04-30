@@ -1,68 +1,30 @@
 #!/usr/bin/env python3
 import os
 import sys
-import json
 import base64
 import subprocess
 import requests
 from datetime import datetime
 from pathlib import Path
+from dotenv import load_dotenv
+import logging
 
-# ANSI color codes
-GREEN = "\033[0;32m"
-YELLOW = "\033[1;33m"
-RED = "\033[0;31m"
-RESET = "\033[0m"
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[
+        logging.FileHandler("pyunimus.log"),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+logger = logging.getLogger(__name__)
 
 # Global variables (will be set during initialization)
-config = {}
 devices = {}
 script_dir = ""
 backup_dir = ""
-log_file_path = ""
-
-def write_log(message: str) -> None:
-    """Append a message to the log file with a timestamp.
-    
-    Args:
-        message (str): The message to append.
-    """
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open(log_file_path, "a") as log_file:
-        log_file.write(f"{timestamp} {message}\n")
-
-def echo_green(message: str) -> None:
-    """Log and print a message in green.
-    
-    The function writes the message to the log file and prints it to the console with green color.
-    
-    Args:
-        message (str): The message to output.
-    """
-    write_log(message)
-    print(f"{GREEN}{message}{RESET}")
-
-def echo_yellow(message: str) -> None:
-    """Log and print a warning message in yellow.
-    
-    The function prefixes the message with 'WARNING:', writes it to the log file, and prints it in yellow.
-    
-    Args:
-        message (str): The warning message to output.
-    """
-    write_log("WARNING: " + message)
-    print(f"{YELLOW}WARNING: {message}{RESET}")
-
-def echo_red(message: str) -> None:
-    """Log and print an error message in red.
-    
-    The function prefixes the message with 'ERROR:', writes it to the log file, and prints it in red.
-    
-    Args:
-        message (str): The error message to output.
-    """
-    write_log("ERROR: " + message)
-    print(f"{RED}ERROR: {message}{RESET}")
 
 def error_check(status: int, message: str) -> None:
     """Check the exit status and exit the program if an error is detected.
@@ -72,7 +34,7 @@ def error_check(status: int, message: str) -> None:
         message (str): The error message to log and display if status is non-zero.
     """
     if status != 0:
-        echo_red(message)
+        logger.error(message)
         sys.exit(status)
 
 def unimus_get(api_endpoint: str) -> dict:
@@ -89,16 +51,16 @@ def unimus_get(api_endpoint: str) -> dict:
     Raises:
         SystemExit: If the HTTP request fails.
     """
-    url = f"{config['unimus_server_address'].rstrip('/')}/api/v2/{api_endpoint}"
+    url = f"{os.getenv('unimus_server_address').rstrip('/')}/api/v2/{api_endpoint}"
     headers = {
         "Accept": "application/json",
-        "Authorization": f"Bearer {config['unimus_api_key']}"
+        "Authorization": f"Bearer {os.getenv('unimus_api_key')}"
     }
     try:
         response = requests.get(url, headers=headers, timeout=30)
         response.raise_for_status()
     except Exception as e:
-        echo_red("Unable to get data from unimus server")
+        logger.error("Unable to get data from unimus server")
         sys.exit(1)
     return response.json()
 
@@ -115,7 +77,7 @@ def unimus_status_check() -> str:
     try:
         status = result["data"]["status"]
     except (KeyError, TypeError):
-        echo_red("Unable to perform unimus Status Check")
+        logger.error("Unable to perform unimus Status Check")
         sys.exit(1)
     return status
 
@@ -144,14 +106,14 @@ def save_backup(device_id, backup_date, backup_b64, bkp_type) -> None:
             with open(backup_file, "wb") as f:
                 f.write(backup_data)
         except Exception as e:
-            echo_red(f"Failed to save backup for device {device_id}: {e}")
+            logger.error(f"Failed to save backup for device {device_id}: {e}")
 
 def get_all_devices() -> None:
     """Retrieve and store device information from the Unimus API.
     
     The function fetches device data page by page and populates the global 'devices' dictionary.
     """
-    echo_green("Getting Device Information")
+    logger.info("Getting Device Information")
     page = 0
     while True:
         result = unimus_get(f"devices?page={page}")
@@ -189,7 +151,7 @@ def get_all_backups() -> None:
                 save_backup(device_id, backup_date, backup_b64, bkp_type)
                 backup_count += 1
             page += 1
-    echo_green(f"{backup_count} backups exported")
+    logger.info(f"{backup_count} backups exported")
 
 def get_latest_backups() -> None:
     """Fetch and save the latest backups for all devices from the Unimus API.
@@ -216,7 +178,7 @@ def get_latest_backups() -> None:
             save_backup(device_id, backup_date, backup_b64, bkp_type)
             backup_count += 1
         page += 1
-    echo_green(f"{backup_count} backups exported")
+    logger.info(f"{backup_count} backups exported")
 
 def run_command(command, cwd=None) -> str:
     """Execute a shell command and return its output.
@@ -234,11 +196,11 @@ def run_command(command, cwd=None) -> str:
     try:
         result = subprocess.run(command, cwd=cwd, shell=True, capture_output=True, text=True)
         if result.returncode != 0:
-            echo_red(f"Command failed: {command}\nStdout: {result.stdout}\nStderr: {result.stderr}")
+            logger.error(f"Command failed: {command}\nStdout: {result.stdout}\nStderr: {result.stderr}")
             sys.exit(result.returncode)
         return result.stdout.strip()
     except Exception as e:
-        echo_red(f"Command exception: {e}")
+        logger.error(f"Command exception: {e}")
         sys.exit(1)
 
 def push_to_git() -> None:
@@ -258,21 +220,21 @@ def push_to_git() -> None:
         run_command("git init")
         run_command("git add .")
         run_command("git commit -m 'Initial Commit'")
-        protocol = config.get("git_server_protocol", "").lower()
+        protocol = os.getenv("git_server_protocol").lower()
         remote_url = ""
         if protocol == "ssh":
-            run_command(f"ssh-keyscan -H {config['git_server_address']} >> ~/.ssh/known_hosts")
-            if config.get("git_password", "") == "":
-                remote_url = f"ssh://{config['git_username']}@{config['git_server_address']}/{config['git_repo_name']}"
+            run_command(f"ssh-keyscan -H {os.getenv('git_server_address')} >> ~/.ssh/known_hosts")
+            if os.getenv("git_password", "") == "":
+                remote_url = f"ssh://{os.getenv('git_username')}@{os.getenv('git_server_address')}/{os.getenv('git_repo_name')}"
             else:
-                remote_url = f"ssh://{config['git_username']}:{config['git_password']}@{config['git_server_address']}/{config['git_repo_name']}"
+                remote_url = f"ssh://{os.getenv('git_username')}:{os.getenv('git_password')}@{os.getenv('git_server_address')}/{os.getenv('git_repo_name')}"
         elif protocol in ["http", "https"]:
-            remote_url = f"{protocol}://{config['git_username']}:{config['git_password']}@{config['git_server_address']}:{config['git_port']}/{config['git_repo_name']}"
+            remote_url = f"{protocol}://{os.getenv('git_username')}:{os.getenv('git_password')}@{os.getenv('git_server_address')}:{os.getenv('git_port')}/{os.getenv('git_repo_name')}"
         else:
-            echo_red("Invalid setting for git_server_protocol")
+            logger.error("Invalid setting for git_server_protocol")
             sys.exit(2)
         run_command(f"git remote add origin {remote_url}")
-        run_command(f"git push -u origin {config['git_branch']} >> {log_file_path}")
+        run_command(f"git push -u origin {os.getenv('git_branch')} >> {log_file_path}")
         run_command("git push >> " + log_file_path)
     else:
         run_command("git add --all")
@@ -282,39 +244,31 @@ def push_to_git() -> None:
     os.chdir(script_dir)
 
 def import_variables() -> None:
-    """Load and validate configuration variables from the config.json file.
+    """Load and validate configuration variables from the .env file.
     
-    The function reads the configuration from 'config.json', checks for mandatory keys, and populates the global config dictionary.
+    The function reads the configuration from '.env', checks for mandatory keys, and populates the global config dictionary.
     
     Raises:
         SystemExit: If the configuration file is not found or required variables are missing.
     """
-    global config
-    config_file = Path(script_dir) / "config.json"
-    if not config_file.exists():
-        echo_red(f"Configuration file {config_file} not found")
-        sys.exit(2)
-    try:
-        with open(config_file, "r") as f:
-            config = json.load(f)
-    except Exception as e:
-        echo_red(f"Failed to load configuration: {e}")
-        sys.exit(2)
+    """Load and validate configuration variables from the .env file."""
+    load_dotenv(override=True)
 
     required_vars = ["unimus_server_address", "unimus_api_key", "backup_type", "export_type"]
-    for key in required_vars:
-        if not config.get(key):
-            echo_red(f"{key} is not set in the configuration")
+    for var in required_vars:
+        if not os.getenv(var):
+            logger.error(f"{var} is not set in the environment")
             sys.exit(2)
-    if config["export_type"] == "git":
+
+    if os.getenv("export_type") == "git":
         git_vars = ["git_username", "git_email", "git_server_protocol",
                     "git_server_address", "git_port", "git_repo_name", "git_branch"]
-        for key in git_vars:
-            if not config.get(key):
-                echo_red(f"{key} is not set in the configuration")
+        for var in git_vars:
+            if not os.getenv(var):
+                logger.error(f"{var} is not set in the environment")
                 sys.exit(2)
-        if config["git_server_protocol"] in ["http", "https"] and not config.get("git_password"):
-            echo_red("Please provide a git password in the configuration")
+        if os.getenv("git_server_protocol") in ["http", "https"] and not os.getenv("git_password"):
+            logger.error("Please provide a git password in the environment")
             sys.exit(2)
 
 def main() -> None:
@@ -328,37 +282,38 @@ def main() -> None:
     os.chdir(script_dir)
     backup_dir = os.path.join(script_dir, "backups")
     Path(backup_dir).mkdir(exist_ok=True)
-    log_file_path = os.path.join(script_dir, "pyunimus.log")
-    with open(log_file_path, "a") as f:
-        f.write("Log File - " + datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\n")
 
     import_variables()
+
     status = unimus_status_check()
+
     if status == "OK":
-        echo_green("Getting device data")
+        logger.info("Getting device data")
         get_all_devices()
-        if config["backup_type"] == "latest":
-            echo_green("Exporting latest backups")
+        if os.getenv("backup_type") == "latest":
+            logger.info("Exporting latest backups")
             get_latest_backups()
-            echo_green("Export successful")
-        elif config["backup_type"] == "all":
-            echo_green("Exporting all backups")
+            logger.info("Export successful")
+        elif os.getenv("backup_type") == "all":
+            logger.info("Exporting all backups")
             get_all_backups()
-            echo_green("Export successful")
+            logger.info("Export successful")
         else:
-            echo_yellow("Unknown backup type specified")
-        if config["export_type"] == "git":
-            echo_green("Pushing to git")
+            logger.warning("Unknown backup type specified")
+        if os.getenv("export_type") == "git":
+            logger.info("Pushing to git")
             push_to_git()
-            echo_green("Push successful")
+            logger.info("Push successful")
     else:
         if not status:
-            echo_red("Unable to connect to unimus server")
+            logger.error("Unable to connect to unimus server")
             sys.exit(2)
         else:
-            echo_red(f"Unimus server status: {status}")
+            logger.error(f"Unimus server status: {status}")
             sys.exit(2)
-    echo_green("Script finished")
+            
+    logger.info("Script finished")
+    logger.info(f"Sleeping for {os.getenv('RUN_INTERVAL', '3600')} seconds")
 
 if __name__ == "__main__":
     main()

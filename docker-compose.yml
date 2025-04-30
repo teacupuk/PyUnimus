@@ -1,0 +1,8 @@
+services:
+  pyunimus:
+    image: pyunimus:latest
+    build: .
+    env_file: .env
+    volumes:
+      - ./backups:/app/backups
+    restart: unless-stopped

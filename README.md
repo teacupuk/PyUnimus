@@ -1,6 +1,6 @@
 # PyUnimus
 
-pyunimus is a Python-based tool that automates the backup export process from a Unimus server to your local disk or Git repository. Originally derived from a Bash script, this tool leverages the Unimus API to fetch device backups and supports exporting either the latest backup or all available backups. Additionally, if configured, it can push the backups to a Git repository for version control and backup management.
+PyUnimus is a Python-based tool that automates the backup export process from a Unimus server to your local disk or Git repository. Originally derived from a Bash script by NetCore, this tool leverages the Unimus API to fetch device backups and supports exporting either the latest backup or all available backups. Additionally, if configured, it can push the backups to a Git repository for version control and backup management. This can either run as a python script locally or via a docker container.
 
 ## Features
 
@@ -15,13 +15,13 @@ pyunimus is a Python-based tool that automates the backup export process from a 
 
 ## Prerequisites
 
-- **Python 3.x:**  
+- **Python 3.11  
   Ensure you have Python 3 installed. You can download it from [python.org](https://www.python.org/).
 
 - **Required Python Packages:**  
   Install the required packages using pip:
   ```bash
-  pip3 install requests
+  pip3 install --no-cache-dir -r requirements.txt
   ```
 
 - **Git:**  
@@ -35,44 +35,46 @@ pyunimus is a Python-based tool that automates the backup export process from a 
    cd pyunimus
    ```
 
+## Docker
+
+You can run PyUnimus as a Docker container.
+
+### Build locally
+
+```bash
+docker build -t pyunimus .
+docker run -v $(pwd)/backups:/app/backups --env-file .env pyunimus
+```
+
+### Pull from GitHub Container Registry
+
+```bash
+docker pull ghcr.io/teacupuk/pyunimus:latest
+docker run -v $(pwd)/backups:/app/backups --env-file .env ghcr.io/teacupuk/pyunimus:latest
+```
+
 ## Configuration
 
-The tool is configured through the `config.json` file (converted from an ENV file). Update the JSON file with your settings before running the tool:
+The tool uses a `.env` file to provide configuration variables. Example:
 
-```json
-{
-  "unimus_server_address": "http://foo.bar:8085",
-  "unimus_api_key": "insert api key here",
-  "backup_type": "latest",
-  "export_type": "fs",
-  "git_username": "foo",
-  "git_password": "password",
-  "git_email": "foo@bar.org",
-  "git_server_protocal": "ssh",
-  "git_server_address": "192.168.4.5",
-  "git_port": "22",
-  "git_repo_name": "user/PyUnimus",
-  "git_branch": "master"
-}
+```env
+unimus_server_address=http://foo.bar:8085
+unimus_api_key=insert api key here
+backup_type=latest
+export_type=fs
+git_username=foo
+git_password=password
+git_email=foo@bar.org
+git_server_protocol=ssh
+git_server_address=192.168.4.5
+git_port=22
+git_repo_name=user/PyUnimus
+git_branch=master
 ```
 
 > **Note:**  
 > - Ensure all mandatory keys are filled in.  
 > - For Git integration, adjust the settings for your preferred protocol (SSH, HTTP, or HTTPS).
-
-## Usage
-
-1. **Run the Script:**
-   Execute the script using Python:
-   ```bash
-   python unimus-backup-exporter.py
-   ```
-
-2. **Logging:**
-   The tool writes log messages to `pyunimus.log` located in the same directory as the script.
-
-3. **Backup Directory:**
-   Backups are saved in the `backups` folder. Each device gets its own folder containing its respective backup files.
 
 ## How It Works
 
